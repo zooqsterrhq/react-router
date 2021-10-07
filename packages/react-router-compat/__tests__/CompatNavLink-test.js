@@ -412,7 +412,7 @@ describe("A <NavLink>", () => {
     });
   });
 
-  xit("does not do exact matching by default", () => {
+  it("does not do exact matching by default", () => {
     renderStrict(
       <MemoryRouter initialEntries={["/pizza/anchovies"]}>
         <NavLink to="/pizza" activeClassName="active">
@@ -518,7 +518,7 @@ describe("A <NavLink>", () => {
       expect(a.className).toContain("active");
     });
 
-    xit("does not apply default activeClassName for non-strict matches", () => {
+    it("does not apply default activeClassName for non-strict matches", () => {
       renderStrict(
         <MemoryRouter initialEntries={["/pizza"]}>
           <NavLink strict to="/pizza/">
@@ -548,7 +548,7 @@ describe("A <NavLink>", () => {
       expect(a.className).toContain("selected");
     });
 
-    xit("does not apply custom activeClassName for non-strict matches", () => {
+    it("does not apply custom activeClassName for non-strict matches", () => {
       renderStrict(
         <MemoryRouter initialEntries={["/pizza"]}>
           <NavLink strict to="/pizza/" activeClassName="selected">
