@@ -1,44 +1,178 @@
 import * as React from "react";
+import hoistStatics from "hoist-non-react-statics";
 import { parsePath } from "history";
-import type {
-  Action,
-  History,
-  InitialEntry,
-  Location,
-  MemoryHistory,
-  Path,
-  State,
-  To,
-  Transition
-} from "history";
-import { PathPattern, generatePath } from "react-router";
+import type { Action, History, InitialEntry, Location, To } from "history";
+import { PathPattern } from "react-router";
 import {
   PathMatch,
   Router as V6Router,
   MemoryRouter as V6MemoryRouter,
   BrowserRouter as V6BrowserRouter,
   HashRouter as V6HashRouter,
-  Routes,
   Link as V6Link,
-  useLocation,
+  useLocation as v6UseLocation,
   UNSAFE_LocationContext,
   UNSAFE_NavigationContext,
   UNSAFE_RouteContext,
-  matchPath,
+  matchPath as v6MatchPath,
   useInRouterContext,
   useHref,
   useNavigate,
-  Navigate
+  Navigate,
+  useMatch,
+  useParams as v6UseParams,
+  generatePath as v6GeneratePath
 } from "react-router-dom";
 
 import { StaticRouter as V6StaticRouter } from "react-router-dom/server";
 import type * as LegacyDOM from "./legacy-dom-types";
 import type * as Legacy from "./legacy-types";
-import type * as LegacyHistory from "./legacy-history";
+import type * as H from "./legacy-history";
 
 function invariant(cond: any, message: string): asserts cond {
   if (!cond) throw new Error(message);
 }
+
+export function generatePath<S extends string>(
+  path: S,
+  params?: Legacy.ExtractRouteParams<S>
+): string {
+  return v6GeneratePath(path || "/", params as any);
+}
+
+export const matchPath: typeof LegacyDOM.matchPath = (
+  pathname,
+  props,
+  parent
+) => {
+  if (typeof parent !== "undefined") {
+    console.warn("matchPath parent is no longer supported");
+  }
+
+  let propsArray: (string | LegacyDOM.RouteProps)[];
+
+  if (Array.isArray(props)) {
+    propsArray = props;
+  } else {
+    propsArray = [props];
+  }
+
+  for (let toMatch of propsArray) {
+    let strict = typeof toMatch === "string" ? false : toMatch.strict || false;
+    let caseSensitive =
+      typeof toMatch === "string" ? false : toMatch.sensitive || false;
+    let end = typeof toMatch === "string" ? false : toMatch.exact || false;
+
+    let paths: string[] =
+      typeof toMatch === "string"
+        ? [toMatch]
+        : Array.isArray(toMatch.path)
+        ? toMatch.path
+        : [toMatch.path];
+
+    for (let path of paths) {
+      if (typeof path !== "string") {
+        continue;
+      }
+
+      let pattern: PathPattern = {
+        path: path,
+        caseSensitive,
+        end
+      };
+      let match = v6MatchPath(pattern, pathname);
+      if (!match || (strict && match.pathname !== pathname)) {
+        continue;
+      }
+
+      console.log({
+        url: match.pathname,
+        path
+      });
+      return {
+        isExact: match.pathname === pathname,
+        params: match.params as any,
+        path: match.pattern.path,
+        url: match.pathname
+      };
+    }
+  }
+
+  return null;
+};
+
+export const useHistory: typeof LegacyDOM.useHistory = () => {
+  let internalLocation = React.useContext(UNSAFE_LocationContext);
+  let navigate = React.useContext(UNSAFE_NavigationContext);
+
+  return createLegacyHistory(internalLocation, navigate);
+};
+
+export const useLocation: typeof LegacyDOM.useLocation = () => {
+  let location = v6UseLocation();
+
+  return React.useMemo(
+    () => ({
+      hash: location.hash,
+      pathname: location.pathname,
+      search: location.search,
+      state: location.state as any
+    }),
+    [location]
+  );
+};
+
+export const useParams: typeof LegacyDOM.useParams = () => {
+  return v6UseParams() as any;
+};
+
+export const useRouteMatch: typeof LegacyDOM.useRouteMatch = (pathInput => {
+  let routeContext = React.useContext(UNSAFE_RouteContext);
+  let location = v6UseLocation();
+
+  if (Array.isArray(pathInput)) {
+    console.warn("useRouteMatch path array has no effect anymore");
+    return null;
+  }
+
+  if (typeof pathInput === "undefined") {
+    return routeContext.route
+      ? {
+          isExact: routeContext.pathname === location.pathname,
+          params: routeContext.params,
+          path: routeContext.route.path,
+          url: location.pathname
+        }
+      : null;
+  }
+
+  let path = typeof pathInput === "object" ? pathInput.path : pathInput;
+  let caseSensitive =
+    typeof pathInput === "object" ? pathInput.sensitive : false;
+  let end = typeof pathInput === "object" ? pathInput.exact : false;
+
+  let pattern = {
+    path: path as string,
+    caseSensitive,
+    end
+  };
+  let match: PathMatch<string> | null = path
+    ? v6MatchPath(pattern, location.pathname)
+    : {
+        params: {},
+        pathname: location.pathname,
+        pattern
+      };
+
+  return match
+    ? {
+        isExact: match.pathname === location.pathname,
+        params: match.params || {},
+        path: match.pattern.path,
+        url: match.pathname
+      }
+    : null;
+}) as typeof LegacyDOM.useRouteMatch;
 
 export type CompatRouterProps = React.PropsWithChildren<
   Omit<LegacyDOM.RouterProps, "history">
@@ -66,6 +200,8 @@ export function StaticRouter(
 ) {
   let { children, basename, context, location = "" } = props;
 
+  // TODO: Add react context to provide this static context down
+  // to redirect components and whatnot.
   if (typeof context !== "undefined") {
     console.warn("context has no effect anymore");
   }
@@ -175,7 +311,7 @@ export function Switch({
     "You should not use <Switch> outside a <Router>"
   );
 
-  let parentLocation = useLocation();
+  let parentLocation = v6UseLocation();
   let location = providedLocation || parentLocation;
   let element: any;
   let match: PathMatch<string> | null = null;
@@ -191,7 +327,7 @@ export function Switch({
         path
       };
 
-      match = path ? matchPath(pattern, location.pathname) : null;
+      match = path ? v6MatchPath(pattern, location.pathname) : null;
     }
   });
 
@@ -244,7 +380,7 @@ export function Route({
     "You should not use <Route> outside a <Router>"
   );
 
-  let contextLocation = useLocation();
+  let contextLocation = v6UseLocation();
   let location = locationProp || contextLocation;
   let internalLocation = React.useContext(UNSAFE_LocationContext);
   let navigate = React.useContext(UNSAFE_NavigationContext);
@@ -285,7 +421,7 @@ export function Route({
       end: exact || false
     };
     let match: PathMatch<string> | null = path
-      ? matchPath(pattern, location.pathname)
+      ? v6MatchPath(pattern, location.pathname)
       : {
           params: {},
           pathname: location.pathname,
@@ -301,7 +437,7 @@ export function Route({
       match: match
         ? {
             isExact: match.pathname === location.pathname,
-            params: match.params,
+            params: match.params || {},
             path: match.pattern.path,
             url: match.pathname
           }
@@ -318,7 +454,7 @@ export function Route({
           route: match
             ? {
                 caseSensitive: sensitive,
-                path: match.pathname
+                path
               }
             : null
         }}
@@ -371,7 +507,7 @@ export const Link = React.forwardRef<HTMLAnchorElement, LegacyDOM.LinkProps>(
       console.error("The prop `to` is marked as required in `Link`");
     }
 
-    let location = useLocation();
+    let location = v6UseLocation();
     let v6To: To =
       typeof to === "string"
         ? to
@@ -465,7 +601,7 @@ export const NavLink = React.forwardRef<
     console.error("The prop `to` is marked as required in `NavLink`");
   }
 
-  let actualLocation = useLocation();
+  let actualLocation = v6UseLocation();
   let location = React.useMemo(
     () =>
       providedLocation
@@ -496,7 +632,7 @@ export const NavLink = React.forwardRef<
       caseSensitive: sensitive || false,
       end: exact || false
     };
-    let match = matchPath(pattern, location.pathname);
+    let match = v6MatchPath(pattern, location.pathname);
     if (match && strict && href !== location.pathname) {
       match = null;
     }
@@ -555,41 +691,49 @@ export function withRouter<
   P extends LegacyDOM.RouteComponentProps<any>,
   C extends React.ComponentType<P>
 >(Component: C & React.ComponentType<P>) {
-  return React.forwardRef(
-    (
-      props: Omit<P, keyof LegacyDOM.RouteComponentProps<any>> &
-        Legacy.WithRouterProps<C> &
-        Legacy.WithRouterStatics<C>,
-      ref
-    ) => {
-      let { WrappedComponent, wrappedComponentRef, ...rest } = props as any;
+  const displayName = `withRouter(${Component.displayName || Component.name})`;
 
-      let internalLocation = React.useContext(UNSAFE_LocationContext);
-      let navigate = React.useContext(UNSAFE_NavigationContext);
-      let routeContext = React.useContext(UNSAFE_RouteContext);
+  let C = (
+    props: Omit<P, keyof LegacyDOM.RouteComponentProps<any>> &
+      Legacy.WithRouterProps<C> &
+      Legacy.WithRouterStatics<C>
+  ) => {
+    let { WrappedComponent, wrappedComponentRef, ...rest } = props as any;
 
-      let history = React.useMemo(
-        () => createLegacyHistory(internalLocation, navigate),
-        [internalLocation, navigate]
-      );
-      let location = useLocation();
+    let internalLocation = React.useContext(UNSAFE_LocationContext);
+    let navigate = React.useContext(UNSAFE_NavigationContext);
+    let routeContext = React.useContext(UNSAFE_RouteContext);
 
-      return (
-        <Component
-          {...(rest as any)}
-          ref={ref || wrappedComponentRef}
-          history={history}
-          location={location}
-          match={{
-            isExact: routeContext.pathname === location.pathname,
-            params: routeContext.params,
-            path: routeContext.route?.path,
-            url: routeContext.pathname
-          }}
-        />
-      );
-    }
-  );
+    let history = React.useMemo(
+      () => createLegacyHistory(internalLocation, navigate),
+      [internalLocation, navigate]
+    );
+    let location = v6UseLocation();
+
+    return (
+      <Component
+        {...(rest as any)}
+        ref={wrappedComponentRef}
+        history={history}
+        location={location}
+        match={
+          routeContext.route
+            ? {
+                isExact: routeContext.pathname === location.pathname,
+                params: routeContext.params,
+                path: routeContext.route?.path,
+                url: routeContext.pathname
+              }
+            : null // TODO: What should this
+        }
+      />
+    );
+  };
+
+  (C as any).displayName = displayName;
+  (C as any).WrappedComponent = Component;
+
+  return hoistStatics(C, Component);
 }
 
 export function Redirect({
@@ -599,7 +743,7 @@ export function Redirect({
   to,
   push
 }: LegacyDOM.RedirectProps) {
-  let location = useLocation();
+  let location = v6UseLocation();
 
   let state = typeof to === "object" ? (to.state as Object) : undefined;
 
@@ -614,7 +758,7 @@ export function Redirect({
         };
 
   if (from) {
-    let match = matchPath(
+    let match = v6MatchPath(
       {
         path: from,
         end: !!exact
@@ -623,12 +767,12 @@ export function Redirect({
     );
     if (match && (!strict || match.pathname === location.pathname)) {
       let matchedPath =
-        typeof to === "string" ? generatePath(to, match.params) : to;
+        typeof to === "string" ? v6GeneratePath(to, match.params) : to;
       return <Navigate to={matchedPath} replace={!push} state={state} />;
     }
 
     return null;
-  } else if (matchPath(v6To, location.pathname)) {
+  } else if (v6MatchPath(v6To, location.pathname)) {
     return null;
   }
 
