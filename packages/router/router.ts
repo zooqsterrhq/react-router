@@ -1913,7 +1913,7 @@ function saveScrollPosition(
   positions: Record<string, number>
 ): void {
   let key = getPositionKey(matches, location);
-  if (!key) {
+  if (!key || typeof window === "undefined") {
     return;
   }
   positions[key] = window.scrollY;
