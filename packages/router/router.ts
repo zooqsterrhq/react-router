@@ -448,14 +448,18 @@ export function createRouter(init: RouterInit): Router {
   // -- Stateful internal variables to manage navigations --
   // Current navigation in progress (to be committed in completeNavigation)
   let pendingAction: HistoryAction | null = null;
+  // Flag to manage preserving the actionData through loaders/interruptions
+  let preserveActionData = false;
   // AbortController for the active navigation
   let pendingNavigationController: AbortController | null;
   // We use this to avoid touching history in completeNavigation if a
   // revalidation is entirely uninterrupted
   let isUninterruptedRevalidation = false;
-  // Use this internal flag to force revalidation if we receive an
-  // X-Remix-Revalidate header on a redirect response
-  let foundXRemixRevalidate = false;
+  // Use this internal flag to force revalidation of all loaders:
+  //  - useRevalidate
+  //  - X-Remix-Revalidate
+  //  - submission interruption
+  let isForcedRevalidate = false;
   // AbortControllers for any in-flight fetchers
   let fetchControllers = new Map();
   // Track loads based on the order in which they started
@@ -505,9 +509,7 @@ export function createRouter(init: RouterInit): Router {
       // Clear existing actionData on any completed navigation beyond the original
       // action.  Do this prior to spreading in newState in case we've gotten back
       // to back actions
-      ...(state.actionData != null && state.transition.type !== "actionReload"
-        ? { actionData: null }
-        : {}),
+      ...(preserveActionData ? {} : { actionData: null }),
       ...newState,
       historyAction,
       location,
@@ -530,14 +532,19 @@ export function createRouter(init: RouterInit): Router {
 
     // Reset stateful navigation vars
     pendingAction = null;
+    preserveActionData = false;
     isUninterruptedRevalidation = false;
-    foundXRemixRevalidate = false;
+    isForcedRevalidate = false;
   }
 
   async function navigate(
     path: number | To,
     opts?: NavigateOptions
   ): Promise<void> {
+    // Set to false for each new navigation, it'll be toggled to true if
+    // we enter handleAction
+    preserveActionData = false;
+
     if (typeof path === "number") {
       init.history.go(path);
       return;
@@ -559,36 +566,45 @@ export function createRouter(init: RouterInit): Router {
       });
     }
 
+    // If we interrupt a submission navigation with a new GET navigation, we
+    // need to run all loaders on the _new_ navigation
+    if (
+      state.transition.type === "actionSubmission" ||
+      state.transition.type === "actionReload" ||
+      state.transition.type === "submissionRedirect"
+    ) {
+      isForcedRevalidate = true;
+    }
+
     return await startNavigation(historyAction, location);
   }
 
   async function revalidate(): Promise<void> {
     let { state: transitionState, type } = state.transition;
 
+    // Toggle isForcedRevalidate so the next data load will call all loaders,
+    // and mark us in a revalidating state
+    isForcedRevalidate = true;
+    updateState({ revalidation: "loading" });
+
     // If we're currently submitting an action, we don't need to start a new
-    // transition.  Just set state.revalidation='loading' which will force all
-    // loaders to run on actionReload
+    // transition, we'll just let the follow up loader execution call all loaders
     if (transitionState === "submitting" && type === "actionSubmission") {
-      updateState({ revalidation: "loading" });
       return;
     }
 
-    // If we're currently in an idle state, mark an uninterrupted revalidation
-    // and start a new navigation for the current action/location.  Pass in the
-    // current (idle) transition as an override so we don't ever switch to a
-    // loading state.  If we finish uninterrupted, we will not touch history on
-    // completion
+    // If we're currently in an idle state, start a new navigation for the current
+    // action/location and mark it as uninterrupted, which will skip the history
+    // update in completeNavigation
     if (state.transition.state === "idle") {
-      updateState({ revalidation: "loading" });
       return await startNavigation(state.historyAction, state.location, {
         startUninterruptedRevalidation: true,
       });
     }
 
     // Otherwise, if we're currently in a loading state, just start a new
-    // navigation to the transition.location but do not set isValidating so
-    // that history correctly updates once the navigation completes
-    updateState({ revalidation: "loading" });
+    // navigation to the transition.location but do not trigger an uninterrupted
+    // revalidation so that history correctly updates once the navigation completes
     return await startNavigation(
       pendingAction || state.historyAction,
       state.transition.location,
@@ -692,6 +708,10 @@ export function createRouter(init: RouterInit): Router {
     submission: ActionSubmission,
     matches: DataRouteMatch[]
   ): Promise<HandleActionResult> {
+    // Anytime we process actions, we set this flag to _not_ clear out
+    // state.actionData inside completeNavigation
+    preserveActionData = true;
+
     if (
       matches[matches.length - 1].route.index &&
       !hasNakedIndexQuery(location.search)
@@ -820,7 +840,7 @@ export function createRouter(init: RouterInit): Router {
       // we're about to commit
       isUninterruptedRevalidation ? state.transition : loadingTransition,
       location,
-      foundXRemixRevalidate,
+      isForcedRevalidate,
       pendingActionException,
       revalidatingFetcherMatches,
       false
@@ -1086,7 +1106,7 @@ export function createRouter(init: RouterInit): Router {
       matches,
       state.transition,
       nextLocation,
-      foundXRemixRevalidate,
+      isForcedRevalidate,
       null,
       revalidatingFetcherMatches,
       true
@@ -1256,7 +1276,7 @@ export function createRouter(init: RouterInit): Router {
     redirect: RedirectResult,
     transition: Transition
   ) {
-    foundXRemixRevalidate = redirect.revalidate;
+    isForcedRevalidate = isForcedRevalidate || redirect.revalidate;
     invariant(
       transition.location,
       "Expected a location on the redirect transition"
@@ -1428,7 +1448,7 @@ function getMatchesToLoad(
   matches: DataRouteMatch[],
   transition: Transition,
   location: Location,
-  foundXRemixRevalidate: boolean,
+  isForcedRevalidate: boolean,
   pendingActionException: RouteData | null,
   revalidatingFetcherMatches: Map<string, [string, DataRouteMatch]>,
   isFetcherReload: boolean
@@ -1455,8 +1475,7 @@ function getMatchesToLoad(
         transition,
         location,
         match,
-        state.revalidation,
-        foundXRemixRevalidate,
+        isForcedRevalidate,
         isFetcherReload,
         false
       )
@@ -1474,8 +1493,7 @@ function getMatchesToLoad(
         transition,
         href,
         match,
-        state.revalidation,
-        foundXRemixRevalidate,
+        isForcedRevalidate,
         isFetcherReload,
         true
       );
@@ -1512,8 +1530,7 @@ function shouldRevalidateLoader(
   transition: Transition,
   location: string | Location,
   match: DataRouteMatch,
-  revalidationState: RevalidationState,
-  foundXRemixRevalidate: boolean,
+  isForcedRevalidate: boolean,
   isFetcherReload: boolean,
   isFetcherRevalidation: boolean
 ) {
@@ -1521,11 +1538,6 @@ function shouldRevalidateLoader(
   let currentParams = currentMatch.params;
   let nextUrl = createURL(location);
   let nextParams = match.params;
-  let isForcedRevalidate =
-    // User manually called router.revalidate()
-    revalidationState === "loading" ||
-    // One of our loaders redirected with an X-Remix-Revalidate header
-    foundXRemixRevalidate;
 
   // This is the default implementation as to when we revalidate.  If the route
   // provides it's own implementation, then we give full control to them but
@@ -1555,7 +1567,8 @@ function shouldRevalidateLoader(
       isFetcherReload ||
       // Search params affect all loaders
       currentUrl.search !== nextUrl.search ||
-      // Forced revalidation due to useRevalidate or X-Remix-Revalidate
+      // Forced revalidation due to useRevalidate, X-Remix-Revalidate, or an
+      // interrupted submission
       isForcedRevalidate
     );
   }

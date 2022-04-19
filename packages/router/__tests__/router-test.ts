@@ -1738,6 +1738,7 @@ describe("a router", () => {
         formData: createFormData({ gosh: "dang" }),
       });
       await A.actions.foo.resolve("A ACTION");
+      await A.loaders.root.resolve("A ROOT");
       await A.loaders.foo.resolve("A LOADER");
       expect(t.router.state.actionData).toEqual({ foo: "A ACTION" });
 
@@ -2448,6 +2449,84 @@ describe("a router", () => {
 
         expect(t.router.state.actionData).toEqual({
           baz: "C",
+        });
+      });
+    });
+
+    describe(`
+      A) POST /foo |--X
+      B) GET  /bar    |-----O
+    `, () => {
+      it("forces all loaders to revalidate on interrupted submission", async () => {
+        let t = initializeTmTest();
+        let A = await t.navigate("/foo", {
+          formMethod: "post",
+          formData: createFormData({ key: "value" }),
+        });
+        // Interrupting the submission should cause the next load to call all loaders
+        let B = await t.navigate("/bar");
+        await A.actions.foo.resolve("A ACTION");
+        await B.loaders.root.resolve("ROOT*");
+        await B.loaders.bar.resolve("BAR");
+        expect(t.router.state).toMatchObject({
+          transition: IDLE_TRANSITION,
+          location: { pathname: "/bar" },
+          loaderData: {
+            root: "ROOT*",
+            bar: "BAR",
+          },
+        });
+      });
+    });
+
+    describe(`
+      A) POST /foo |--|--X
+      B) GET  /bar       |-----O
+    `, () => {
+      it("forces all loaders to revalidate on interrupted actionReload", async () => {
+        let t = initializeTmTest();
+        let A = await t.navigate("/foo", {
+          formMethod: "post",
+          formData: createFormData({ key: "value" }),
+        });
+        await A.actions.foo.resolve("A ACTION");
+        // Interrupting the actionReload should cause the next load to call all loaders
+        let B = await t.navigate("/bar");
+        await B.loaders.root.resolve("ROOT*");
+        await B.loaders.bar.resolve("BAR");
+        expect(t.router.state).toMatchObject({
+          transition: IDLE_TRANSITION,
+          location: { pathname: "/bar" },
+          loaderData: {
+            root: "ROOT*",
+            bar: "BAR",
+          },
+        });
+      });
+    });
+
+    describe(`
+      A) POST /foo |--|--X
+      B) GET  /bar       |-----O
+    `, () => {
+      it("forces all loaders to revalidate on interrupted submissionRedirect", async () => {
+        let t = initializeTmTest();
+        let A = await t.navigate("/foo", {
+          formMethod: "post",
+          formData: createFormData({ key: "value" }),
+        });
+        await A.actions.foo.resolve("A ACTION");
+        // Interrupting the actionReload should cause the next load to call all loaders
+        let B = await t.navigate("/bar");
+        await B.loaders.root.resolve("ROOT*");
+        await B.loaders.bar.resolve("BAR");
+        expect(t.router.state).toMatchObject({
+          transition: IDLE_TRANSITION,
+          location: { pathname: "/bar" },
+          loaderData: {
+            root: "ROOT*",
+            bar: "BAR",
+          },
         });
       });
     });
