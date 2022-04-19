@@ -870,6 +870,75 @@ export function useFetchers(): Fetcher[] {
   invariant(state, `useFetchers must be used within a DataRouter`);
   return [...state.fetchers.values()];
 }
+
+/**
+ * When rendered inside a DataRouter, will restore scroll positions according
+ * to <Route> opt-in via scrollRestorationMode
+ */
+export function useScrollRestoration() {
+  let location = useLocation();
+  let navigation = useNavigation();
+  let state = React.useContext(UNSAFE_DataRouterStateContext);
+
+  // Trigger manual scroll restoration while we're active
+  React.useEffect(() => {
+    window.history.scrollRestoration = "manual";
+    return () => {
+      window.history.scrollRestoration = "auto";
+    };
+  }, []);
+
+  useBeforeUnload(
+    React.useCallback(() => {
+      window.history.scrollRestoration = "auto";
+    }, [])
+  );
+
+  // Disable scrolling during transitions
+  React.useEffect(() => {
+    if (navigation.state === "idle") {
+      enableScroll();
+    } else {
+      disableScroll();
+    }
+  }, [navigation.state]);
+
+  // Restore scrolling when state.initialScrollPosition changes
+  React.useEffect(() => {
+    // bail on false, used when we complete a submission navigation
+    if (state?.initialScrollPosition === false) {
+      return;
+    }
+
+    // been here before, scroll to it
+    if (typeof state?.initialScrollPosition === "number") {
+      window.scrollTo(0, state.initialScrollPosition);
+      return;
+    }
+
+    // try to scroll to the hash
+    if (location.hash) {
+      let el = document.getElementById(location.hash.slice(1));
+      if (el) {
+        el.scrollIntoView();
+        return;
+      }
+    }
+
+    // otherwise go to the top on new locations
+    window.scrollTo(0, 0);
+  }, [location, state?.initialScrollPosition]);
+}
+
+function useBeforeUnload(callback: () => any): void {
+  React.useEffect(() => {
+    window.addEventListener("beforeunload", callback);
+    return () => {
+      window.removeEventListener("beforeunload", callback);
+    };
+  }, [callback]);
+}
+
 //#endregion
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -893,4 +962,51 @@ function warning(cond: boolean, message: string): void {
   }
 }
 
+// Quick 'n dirty scroll blocker, likely not the final solution but works
+// for the first pass.  Adapted from https://stackoverflow.com/a/4770179
+function preventDefault(e: Event) {
+  e.preventDefault();
+}
+
+function preventDefaultForScrollKeys(e: KeyboardEvent) {
+  let keys = ["ArrowUp", "ArrowRight", "ArrowDown", "ArrowLeft"];
+  if (keys.includes(e.key)) {
+    preventDefault(e);
+    return false;
+  }
+}
+
+// modern Chrome requires { passive: false } when adding event
+var supportsPassive = false;
+try {
+  window.addEventListener(
+    "test",
+    () => {},
+    Object.defineProperty({}, "passive", {
+      get() {
+        return (supportsPassive = true);
+      },
+    })
+  );
+} catch (e) {}
+
+var wheelOpt: AddEventListenerOptions | false = supportsPassive
+  ? { passive: false }
+  : false;
+var wheelEvent: "wheel" | "mousewheel" =
+  "onwheel" in document.createElement("div") ? "wheel" : "mousewheel";
+
+function disableScroll() {
+  window.addEventListener("DOMMouseScroll", preventDefault, false); // older FF
+  window.addEventListener(wheelEvent, preventDefault, wheelOpt); // modern desktop
+  window.addEventListener("touchmove", preventDefault, wheelOpt); // mobile
+  window.addEventListener("keydown", preventDefaultForScrollKeys, false);
+}
+
+function enableScroll() {
+  window.removeEventListener("DOMMouseScroll", preventDefault, false);
+  window.removeEventListener(wheelEvent, preventDefault, wheelOpt);
+  window.removeEventListener("touchmove", preventDefault, wheelOpt);
+  window.removeEventListener("keydown", preventDefaultForScrollKeys, false);
+}
 //#endregion

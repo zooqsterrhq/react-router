@@ -504,6 +504,7 @@ export function createRoutesFromChildren(
       action: element.props.action,
       exceptionElement: element.props.exceptionElement,
       shouldRevalidate: element.props.shouldRevalidate,
+      scrollRestorationMode: element.props.scrollRestorationMode,
     };
 
     if (element.props.children) {

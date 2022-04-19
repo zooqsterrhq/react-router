@@ -64,6 +64,7 @@ export interface RouteObject {
   action?: (obj: ActionFunctionArgs) => any | Promise<any>;
   exceptionElement?: React.ReactNode;
   shouldRevalidate?: (obj: ShouldRevalidateFunctionArgs) => boolean;
+  scrollRestorationMode?: "key" | "pathname";
 }
 
 /**

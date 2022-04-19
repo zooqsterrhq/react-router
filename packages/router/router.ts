@@ -71,6 +71,14 @@ export interface RouterState {
   initialized: boolean;
 
   /**
+   * Current scroll position we should start at for a new view
+   *  - number -> scroll position to restore to
+   *  - false -> do not restore scroll at all (used during submissions)
+   *  - null -> don't have a saved position, scroll to hash or top of page
+   */
+  initialScrollPosition: number | false | null;
+
+  /**
    * Tracks the state of the current transition
    */
   transition: Transition;
@@ -436,6 +444,7 @@ export function createRouter(init: RouterInit): Router {
     matches: initialMatches,
     initialized: init.hydrationData != null && !foundMissingHydrationData,
     transition: IDLE_TRANSITION,
+    initialScrollPosition: null,
     revalidation: "idle",
     loaderData: foundMissingHydrationData
       ? {}
@@ -470,6 +479,10 @@ export function createRouter(init: RouterInit): Router {
   let fetchRedirectIds = new Set<string>();
   // Most recent href/match for fetcher.load calls for fetchers with opt-in revalidation
   let revalidatingFetcherMatches = new Map<string, [string, DataRouteMatch]>();
+  // Is the current navigation a submission?  Used to prevent scroll restoration
+  let pendingNavigationIsSubmission = false;
+  // Object to hold scroll restoration locations during routing
+  let positions: Record<string, number> = {};
 
   // If history informs us of a POP navigation, start the transition but do not update
   // state.  We'll update our own state once the transition completes
@@ -501,6 +514,7 @@ export function createRouter(init: RouterInit): Router {
     location: Location,
     newState: Partial<Omit<RouterState, "action" | "location" | "transition">>
   ): void {
+    debugger;
     updateState({
       // Clear existing actionData on any completed navigation beyond the original
       // action.  Do this prior to spreading in newState in case we've gotten back
@@ -516,6 +530,13 @@ export function createRouter(init: RouterInit): Router {
       revalidation: "idle",
       // Always preserve any existing loaderData from re-used routes
       loaderData: mergeLoaderData(state, newState),
+      initialScrollPosition: pendingNavigationIsSubmission
+        ? false
+        : getSavedScrollPosition(
+            newState.matches || state.matches,
+            location,
+            positions
+          ),
     });
 
     if (isUninterruptedRevalidation) {
@@ -532,6 +553,7 @@ export function createRouter(init: RouterInit): Router {
     pendingAction = null;
     isUninterruptedRevalidation = false;
     foundXRemixRevalidate = false;
+    pendingNavigationIsSubmission = false;
   }
 
   async function navigate(
@@ -615,6 +637,14 @@ export function createRouter(init: RouterInit): Router {
     // Unset any ongoing uninterrupted revalidations (unless told otherwise),
     // since we want this new navigation to update history normally
     isUninterruptedRevalidation = opts?.startUninterruptedRevalidation === true;
+
+    // Save the current scroll position every time we start a new navigation
+    if (opts?.submission) {
+      pendingNavigationIsSubmission = true;
+    } else {
+      pendingNavigationIsSubmission = false;
+      saveScrollPosition(state.matches, state.location, positions);
+    }
 
     let loadingTransition = opts?.overrideTransition;
     let matches = matchRoutes(dataRoutes, location);
@@ -1857,4 +1887,53 @@ function createURL(location: Location | string): URL {
   return new URL(href, base);
 }
 
+// Determine the key to use in the lookup table for saved scrolling positions
+function getPositionKey(
+  matches: DataRouteMatch[],
+  location: Location
+): string | undefined {
+  let mode: DataRouteObject["scrollRestorationMode"];
+  for (let i = matches.length - 1; i >= 0; i--) {
+    if (matches[i].route.scrollRestorationMode) {
+      mode = matches[i].route.scrollRestorationMode;
+      break;
+    }
+  }
+
+  if (!mode) {
+    return;
+  }
+
+  return mode === "pathname" ? location.pathname : location.key;
+}
+
+function saveScrollPosition(
+  matches: DataRouteMatch[],
+  location: Location,
+  positions: Record<string, number>
+): void {
+  let key = getPositionKey(matches, location);
+  if (!key) {
+    return;
+  }
+  positions[key] = window.scrollY;
+}
+
+function getSavedScrollPosition(
+  matches: DataRouteMatch[],
+  location: Location,
+  positions: Record<string, number>
+): number | null {
+  let key = getPositionKey(matches, location);
+  if (!key) {
+    return null;
+  }
+
+  let y = positions[key];
+  if (typeof y !== "number") {
+    return null;
+  }
+
+  return y;
+}
 //#endregion
