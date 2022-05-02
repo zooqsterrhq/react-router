@@ -448,8 +448,6 @@ export function createRouter(init: RouterInit): Router {
   // -- Stateful internal variables to manage navigations --
   // Current navigation in progress (to be committed in completeNavigation)
   let pendingAction: HistoryAction | null = null;
-  // Flag to manage preserving the actionData through loaders/interruptions
-  let preserveActionData = false;
   // AbortController for the active navigation
   let pendingNavigationController: AbortController | null;
   // We use this to avoid touching history in completeNavigation if a
@@ -509,7 +507,9 @@ export function createRouter(init: RouterInit): Router {
       // Clear existing actionData on any completed navigation beyond the original
       // action.  Do this prior to spreading in newState in case we've gotten back
       // to back actions
-      ...(preserveActionData ? {} : { actionData: null }),
+      ...(state.actionData != null && state.transition.type !== "actionReload"
+        ? { actionData: null }
+        : {}),
       ...newState,
       historyAction,
       location,
@@ -532,7 +532,6 @@ export function createRouter(init: RouterInit): Router {
 
     // Reset stateful navigation vars
     pendingAction = null;
-    preserveActionData = false;
     isUninterruptedRevalidation = false;
     isForcedRevalidate = false;
   }
@@ -541,10 +540,6 @@ export function createRouter(init: RouterInit): Router {
     path: number | To,
     opts?: NavigateOptions
   ): Promise<void> {
-    // Set to false for each new navigation, it'll be toggled to true if
-    // we enter handleAction
-    preserveActionData = false;
-
     if (typeof path === "number") {
       init.history.go(path);
       return;
@@ -566,14 +561,21 @@ export function createRouter(init: RouterInit): Router {
       });
     }
 
-    // If we interrupt a submission navigation with a new GET navigation, we
-    // need to run all loaders on the _new_ navigation
-    if (
-      state.transition.type === "actionSubmission" ||
-      state.transition.type === "actionReload" ||
-      state.transition.type === "submissionRedirect"
-    ) {
+    // If we interrupt a navigation/fetcher submission with a new GET navigation,
+    // we need to run all loaders on the _new_ navigation
+    let submissionTypes = [
+      "actionSubmission",
+      "actionReload",
+      "submissionRedirect",
+    ];
+    if (submissionTypes.includes(state.transition.type)) {
       isForcedRevalidate = true;
+    } else {
+      state.fetchers.forEach((fetcher) => {
+        if (submissionTypes.includes(fetcher.type)) {
+          isForcedRevalidate = true;
+        }
+      });
     }
 
     return await startNavigation(historyAction, location);
@@ -708,10 +710,6 @@ export function createRouter(init: RouterInit): Router {
     submission: ActionSubmission,
     matches: DataRouteMatch[]
   ): Promise<HandleActionResult> {
-    // Anytime we process actions, we set this flag to _not_ clear out
-    // state.actionData inside completeNavigation
-    preserveActionData = true;
-
     if (
       matches[matches.length - 1].route.index &&
       !hasNakedIndexQuery(location.search)
