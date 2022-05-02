@@ -800,6 +800,7 @@ describe("a router", () => {
           submission: undefined,
           type: "idle",
         },
+        restoreScrollPosition: null,
         revalidation: "idle",
         fetchers: new Map(),
       });

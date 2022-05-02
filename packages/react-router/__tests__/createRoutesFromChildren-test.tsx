@@ -31,6 +31,7 @@ describe("creating routes from JSX", () => {
               "index": undefined,
               "loader": undefined,
               "path": "home",
+              "scrollRestorationMode": undefined,
               "shouldRevalidate": undefined,
             },
             Object {
@@ -44,6 +45,7 @@ describe("creating routes from JSX", () => {
               "index": undefined,
               "loader": undefined,
               "path": "about",
+              "scrollRestorationMode": undefined,
               "shouldRevalidate": undefined,
             },
             Object {
@@ -61,6 +63,7 @@ describe("creating routes from JSX", () => {
                   "index": true,
                   "loader": undefined,
                   "path": undefined,
+                  "scrollRestorationMode": undefined,
                   "shouldRevalidate": undefined,
                 },
                 Object {
@@ -74,6 +77,7 @@ describe("creating routes from JSX", () => {
                   "index": undefined,
                   "loader": undefined,
                   "path": ":id",
+                  "scrollRestorationMode": undefined,
                   "shouldRevalidate": undefined,
                 },
               ],
@@ -83,6 +87,7 @@ describe("creating routes from JSX", () => {
               "index": undefined,
               "loader": undefined,
               "path": "users",
+              "scrollRestorationMode": undefined,
               "shouldRevalidate": undefined,
             },
           ],
@@ -92,6 +97,7 @@ describe("creating routes from JSX", () => {
           "index": undefined,
           "loader": undefined,
           "path": "/",
+          "scrollRestorationMode": undefined,
           "shouldRevalidate": undefined,
         },
       ]
@@ -134,6 +140,7 @@ describe("creating routes from JSX", () => {
               "index": undefined,
               "loader": [Function],
               "path": "home",
+              "scrollRestorationMode": undefined,
               "shouldRevalidate": [Function],
             },
             Object {
@@ -151,6 +158,7 @@ describe("creating routes from JSX", () => {
                   "index": true,
                   "loader": undefined,
                   "path": undefined,
+                  "scrollRestorationMode": undefined,
                   "shouldRevalidate": undefined,
                 },
               ],
@@ -160,6 +168,7 @@ describe("creating routes from JSX", () => {
               "index": undefined,
               "loader": undefined,
               "path": "users",
+              "scrollRestorationMode": undefined,
               "shouldRevalidate": undefined,
             },
           ],
@@ -171,6 +180,7 @@ describe("creating routes from JSX", () => {
           "index": undefined,
           "loader": undefined,
           "path": "/",
+          "scrollRestorationMode": undefined,
           "shouldRevalidate": undefined,
         },
       ]
