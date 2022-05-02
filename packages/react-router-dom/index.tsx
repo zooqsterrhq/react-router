@@ -596,6 +596,19 @@ const FormImpl = React.forwardRef<HTMLFormElement, FormImplProps>(
 if (__DEV__) {
   Form.displayName = "Form";
 }
+
+/**
+ * This component will emulate the browser's scroll restoration on location
+ * changes.
+ */
+export function ScrollRestoration() {
+  useScrollRestoration();
+  return null;
+}
+
+if (__DEV__) {
+  ScrollRestoration.displayName = "ScrollRestoration";
+}
 //#endregion
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -903,16 +916,16 @@ export function useScrollRestoration() {
     }
   }, [navigation.state]);
 
-  // Restore scrolling when state.initialScrollPosition changes
+  // Restore scrolling when state.restoreScrollPosition changes
   React.useEffect(() => {
-    // bail on false, used when we complete a submission navigation
-    if (state?.initialScrollPosition === false) {
+    // scroll to the top on false, used when we complete a submission navigation
+    if (state?.restoreScrollPosition === false) {
       return;
     }
 
     // been here before, scroll to it
-    if (typeof state?.initialScrollPosition === "number") {
-      window.scrollTo(0, state.initialScrollPosition);
+    if (typeof state?.restoreScrollPosition === "number") {
+      window.scrollTo(0, state.restoreScrollPosition);
       return;
     }
 
@@ -927,7 +940,7 @@ export function useScrollRestoration() {
 
     // otherwise go to the top on new locations
     window.scrollTo(0, 0);
-  }, [location, state?.initialScrollPosition]);
+  }, [location, state?.restoreScrollPosition]);
 }
 
 function useBeforeUnload(callback: () => any): void {

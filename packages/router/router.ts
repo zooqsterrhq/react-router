@@ -76,7 +76,7 @@ export interface RouterState {
    *  - false -> do not restore scroll at all (used during submissions)
    *  - null -> don't have a saved position, scroll to hash or top of page
    */
-  initialScrollPosition: number | false | null;
+  restoreScrollPosition: number | false | null;
 
   /**
    * Tracks the state of the current transition
@@ -444,7 +444,7 @@ export function createRouter(init: RouterInit): Router {
     matches: initialMatches,
     initialized: init.hydrationData != null && !foundMissingHydrationData,
     transition: IDLE_TRANSITION,
-    initialScrollPosition: null,
+    restoreScrollPosition: null,
     revalidation: "idle",
     loaderData: foundMissingHydrationData
       ? {}
@@ -482,7 +482,7 @@ export function createRouter(init: RouterInit): Router {
   // Is the current navigation a submission?  Used to prevent scroll restoration
   let pendingNavigationIsSubmission = false;
   // Object to hold scroll restoration locations during routing
-  let positions: Record<string, number> = {};
+  let savedScrollPositions: Record<string, number> = {};
 
   // If history informs us of a POP navigation, start the transition but do not update
   // state.  We'll update our own state once the transition completes
@@ -514,7 +514,6 @@ export function createRouter(init: RouterInit): Router {
     location: Location,
     newState: Partial<Omit<RouterState, "action" | "location" | "transition">>
   ): void {
-    debugger;
     updateState({
       // Clear existing actionData on any completed navigation beyond the original
       // action.  Do this prior to spreading in newState in case we've gotten back
@@ -530,12 +529,12 @@ export function createRouter(init: RouterInit): Router {
       revalidation: "idle",
       // Always preserve any existing loaderData from re-used routes
       loaderData: mergeLoaderData(state, newState),
-      initialScrollPosition: pendingNavigationIsSubmission
+      restoreScrollPosition: pendingNavigationIsSubmission
         ? false
         : getSavedScrollPosition(
             newState.matches || state.matches,
             location,
-            positions
+            savedScrollPositions
           ),
     });
 
@@ -643,7 +642,7 @@ export function createRouter(init: RouterInit): Router {
       pendingNavigationIsSubmission = true;
     } else {
       pendingNavigationIsSubmission = false;
-      saveScrollPosition(state.matches, state.location, positions);
+      saveScrollPosition(state.matches, state.location, savedScrollPositions);
     }
 
     let loadingTransition = opts?.overrideTransition;
