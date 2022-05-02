@@ -568,14 +568,11 @@ export function createRouter(init: RouterInit): Router {
       "actionReload",
       "submissionRedirect",
     ];
-    if (submissionTypes.includes(state.transition.type)) {
+    if (
+      submissionTypes.includes(state.transition.type) ||
+      [...state.fetchers.values()].some((f) => submissionTypes.includes(f.type))
+    ) {
       isForcedRevalidate = true;
-    } else {
-      state.fetchers.forEach((fetcher) => {
-        if (submissionTypes.includes(fetcher.type)) {
-          isForcedRevalidate = true;
-        }
-      });
     }
 
     return await startNavigation(historyAction, location);
