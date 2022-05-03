@@ -917,7 +917,7 @@ export function useScrollRestoration() {
   }, [navigation.state]);
 
   // Restore scrolling when state.restoreScrollPosition changes
-  React.useEffect(() => {
+  React.useLayoutEffect(() => {
     // scroll to the top on false, used when we complete a submission navigation
     if (state?.restoreScrollPosition === false) {
       return;

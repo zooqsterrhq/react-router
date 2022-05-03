@@ -1891,9 +1891,15 @@ function getPositionKey(
   matches: DataRouteMatch[],
   location: Location
 ): string | undefined {
+  // <Link> told us not to restore
+  if (location.state?.disableScrollRestoration === false) {
+    return;
+  }
+
+  // <Link> state setting overrides <Route> setting
   let mode: DataRouteObject["scrollRestorationMode"];
   for (let i = matches.length - 1; i >= 0; i--) {
-    if (matches[i].route.scrollRestorationMode) {
+    if (matches[i].route.scrollRestorationMode !== undefined) {
       mode = matches[i].route.scrollRestorationMode;
       break;
     }
